@@ -1,0 +1,440 @@
+import sqlite3
+import pickle
+
+class Movie:
+    def __init__(self, name, director, actors, tags):
+        self._name = name
+        self._director = director
+        self._actors = set(actors)
+        self._tags = tags
+
+    def __str__(self):
+        return self._name + "  " + self._director + "  " + str(self._actors) + "  " + str(self._tags)
+
+    def print(self):
+        print('"' + self._name + '"' + "  " + self._director + "  ", end = "")
+        print(self._actors, end = "\n")
+        print(self._tags, end = "\n\n")
+
+    def settag(self, tag):
+        self._tags.add(tag)
+
+    def get_dir(self):
+        return self._director
+
+    def get_actors(self):
+        return self._actors
+
+    def get_tags(self):
+        return self._tags
+
+    def get_name(self):
+        return self._name
+
+
+class Upload:
+    def __init__(self, way):
+        self._way = way
+
+    def create_tables(self):
+        conn = sqlite3.connect(self._way)
+        cur = conn.cursor()
+        tab = """\
+            CREATE TABLE IF NOT EXISTS film_dict(
+                name TEXT,
+                director TEXT DEFAULT "",
+                actors TEXT DEFAULT "",
+                tags TEXT DEFAULT ""
+            );
+
+            CREATE TABLE IF NOT EXISTS directors_dict(
+                name TEXT,
+                films TEXT DEFAULT ""
+            );
+
+            CREATE TABLE IF NOT EXISTS actors_dict(
+                name TEXT,
+                films TEXT DEFAULT ""
+            );
+
+            CREATE TABLE IF NOT EXISTS tags_dict(
+                name TEXT,
+                films DEFAULT ""
+            );
+        """
+        cur.executescript(tab)
+        cur.close()
+        conn.close()
+
+    def fill_films_dict(self, films_dict):
+        conn = sqlite3.connect(self._way)
+        cur = conn.cursor()
+        L = len(films_dict)
+        L = L//100
+        counter = 0
+        arr = []
+        for i in films_dict:
+
+            name = films_dict[i].get_name()
+            director = films_dict[i].get_dir()
+            actors = ""
+            ac = films_dict[i].get_actors()
+            if(ac != set()):
+                for j in ac:
+                    actors += (str(j) + "#$#")
+            tags = ""
+            tg = films_dict[i].get_tags()
+            if(tg != set()):
+                for j in tg:
+                    tags += (str(j) + "#$#")
+
+            ins = (name, director, actors, tags)
+            arr += [ins]
+            if(counter % L == 0):
+                print("\r", end = "")
+                print("uploading:  " + str((counter//L)) + "%  film dict", end = "")
+            counter += 1
+        sql = """\
+            INSERT INTO film_dict (name, director, actors, tags)
+            VALUES(?, ?, ?, ?)
+        """
+        cur.executemany(sql, arr)
+        conn.commit()
+        print("\r", end="")
+        print("films list successfully downloaded")
+        cur.close()
+        conn.close()
+
+    def fill_directors_dict(self, directors_dict):
+        conn = sqlite3.connect(self._way)
+        cur = conn.cursor()
+        L = len(directors_dict)
+        L = L // 100
+        counter = 0
+        arr = []
+        for i in directors_dict:
+            name = i
+            films = ""
+            fms = directors_dict[i]
+            if (fms != set()):
+                for j in fms:
+                    films += (str(j.get_name()) + "#$#")
+
+            ins = (i, films)
+            arr += [ins]
+            if (counter % L == 0):
+                print("\r", end="")
+                print("uploading:  " + str(counter // L ) + "%  directors dict", end="")
+            counter += 1
+        sql = """\
+            INSERT INTO directors_dict (name, films)
+            VALUES(?, ?)
+        """
+        cur.executemany(sql, arr)
+        conn.commit()
+        print("\r", end="")
+        print("directors list successfully downloaded")
+        cur.close()
+        conn.close()
+
+    def fill_actors_dict(self, actors_dict):
+        conn = sqlite3.connect(self._way)
+        cur = conn.cursor()
+        L = len(actors_dict)
+        L = L // 100
+        counter = 0
+        arr = []
+        for i in actors_dict:
+            name = i
+            films = ""
+            fms = actors_dict[i]
+            if (fms != set()):
+                for j in fms:
+                    films += (str(j.get_name()) + "#$#")
+
+            ins = (i, films)
+            arr += [ins]
+            if (counter % L == 0):
+                print("\r", end="")
+                print("uploading:  " + str(counter // L ) + "%  actors dict", end="")
+            counter += 1
+        sql = """\
+            INSERT INTO actors_dict (name, films)
+            VALUES(?, ?)
+        """
+        cur.executemany(sql, arr)
+        conn.commit()
+        print("\r", end="")
+        print("actors list successfully downloaded")
+        cur.close()
+        conn.close()
+
+    def fill_tags_dict(self, tags_dict, films_dict):
+        conn = sqlite3.connect(self._way)
+        cur = conn.cursor()
+        L = len(tags_dict)
+        L = L // 100
+        counter = 0
+        arr = []
+        for i in tags_dict:
+            name = str(i)
+            films = ""
+            fms = tags_dict[i]
+            if (fms != set()):
+                for j in fms:
+                    try:
+                        films += (str(films_dict[j].get_name()) + "#$#")
+                    except KeyError:
+                        pass
+
+            ins = (i, films)
+            arr += [ins]
+            if (counter % L == 0):
+                print("\r", end="")
+                print("uploading:  " + str(counter // L) + "%  tags dict", end="")
+            counter += 1
+        sql = """\
+            INSERT INTO directors_dict (name, films)
+            VALUES(?, ?)
+        """
+        cur.executemany(sql, arr)
+        conn.commit()
+        print("\r", end="")
+        print("tags list successfully downloaded")
+        cur.close()
+        conn.close()
+
+
+
+class Comparer:
+
+    def __init__(self, way):
+        self._way = way
+
+    def find_similar(self, filmname):
+
+        sql_fil = "SELECT * FROM film_dict WHERE name=(?)"
+        sql_dir = "SELECT films FROM directors_dict WHERE name=(?)"
+        sql_act = "SELECT films FROM actors_dict WHERE name=(?)"
+        sql_tag = "SELECT films FROM tags_dict WHERE name=(?)"
+
+        counter = 0
+        conn = sqlite3.connect(self._way)
+        cur = conn.cursor()
+        similar = {}
+        films = set()
+        cur.execute(sql_fil, (filmname,))
+        film = cur.fetchone()
+        if(film == None):
+            print("sorry there's no such film in dataset :( \n")
+            return ["#$#"]
+
+        if (film[1] != ""):
+            print("Director:  " + film[1])
+        if (film[2] != ""):
+            print("Actors:  ", end="")
+            ACTORS = film[2].split("#$#")
+            for i in ACTORS:
+                print(i, end=";;  ")
+        print("\n")
+
+        director = film[1]
+        if(director != ""):
+            cur.execute(sql_dir, (director,))
+            films = cur.fetchone()
+            if(films != None):
+                FILMS = films[0].split("#$#")
+                for i in FILMS:
+                    cur.execute(sql_fil, (i,))
+                    current = cur.fetchone()
+
+                    D = 1
+
+                    try:
+                        A = len(set(film[2].split("#$#")) & set(current[2].split("#$#")))/len(set(film[2].split("#$#")))
+                    except ZeroDivisionError:
+                        A = 0
+
+                    try:
+                        T = len(set(film[3].split("#$#")) & set(current[3].split("#%#")))/len(set(film[3].split("#$#")))
+                    except ZeroDivisionError:
+                        T = 0
+
+                    S = 0.2 * D + 0.4 * A ** 0.5 + 0.4 * (T ** (0.25))
+                    similar[i] = [S, D, A, T]
+                    counter += 1
+                    if(counter % 10 == 0):
+                        print("\r", end = "")
+                        print(str(counter) + " films checked", end = "")
+
+
+        actors = film[2]
+        ACTORS = actors.split("#$#")
+        for k in ACTORS:
+            cur.execute(sql_act, (k,))
+            films = cur.fetchone()
+            if(films != None):
+                FILMS = films[0].split("#$#")
+                for i in FILMS:
+                    cur.execute(sql_fil, (i,))
+                    current = cur.fetchone()
+
+                    if(film[1] == current[1] and film[1] != ""):
+                        D = 1
+                    else:
+                        D = 0
+
+                    try:
+                        A = len(set(film[2].split("#$#")) & set(current[2].split("#$#")))/len(set(film[2].split("#$#")))
+                    except ZeroDivisionError:
+                        A = 0
+
+                    try:
+                        T = len(set(film[3].split("#$#")) & set(current[3].split("#$#"))) / len(set(film[3].split("#$#")))
+                    except ZeroDivisionError:
+                        T = 0
+
+                    S = 0.2 * D + 0.4 * A ** 0.5 + 0.4 * (T ** (0.25))
+                    similar[i] = [S, D, A, T]
+                    counter += 1
+                    if (counter % 10 == 0):
+                        print("\r", end="")
+                        print(str(counter) + " films checked", end = "")
+
+        tags = film[2]
+        TAGS = tags.split("#$#")
+        for k in TAGS:
+            cur.execute(sql_tag, (k,))
+            films = cur.fetchone()
+            if(films != None):
+                FILMS = films[0].split("#$#")
+                for i in FILMS:
+                    cur.execute(sql_fil, (i,))
+                    current = cur.fetchone()
+
+                    if (film[1] == current[1] and film[1] != ""):
+                        D = 1
+                    else:
+                        D = 0
+
+                    try:
+                        A = len(set(film[2].split("#$#")) & set(current[2].split("#$#"))) / len(set(film[2].split("#$#")))
+                    except ZeroDivisionError:
+                        A = 0
+
+                    try:
+                        T = len(set(film[3].split("#$#")) & set(current[3].split("#$#"))) / len(set(film[3].split("#$#")))
+                    except ZeroDivisionError:
+                        T = 0
+
+                    S = 0.2 * D + 0.4 * A ** 0.5 + 0.4 * (T ** (0.25))
+                    similar[i] = [S, D, A, T]
+                    counter += 1
+                    if (counter % 10 == 0):
+                        print("\r", end="")
+                        print(str(counter) + " films checked", end = "")
+
+
+        best_ind = [-1]*5
+        best_fit = [["-1", "", "", ""], ["-1", "", "", ""], ["-1", "", "", ""], ["-1", "", "", ""], ["-1", "", "", ""]]
+        flag = False
+        try:
+            similar.pop(film[0])
+        except KeyError:
+            pass
+        for i in similar:
+            for k in range(0, 5):
+                if ((similar[i][0] > best_ind[k]) and (not flag)):
+                    # here we go
+                    for j in range(0, 4 - k):
+                        best_ind[4 - j] = best_ind[3 - j]
+
+                        best_fit[4 - j][0] = best_fit[3 - j][0]
+                        best_fit[4 - j][1] = best_fit[3 - j][1]
+                        best_fit[4 - j][2] = best_fit[3 - j][2]
+                        best_fit[4 - j][3] = best_fit[3 - j][3]
+                    best_ind[k] = similar[i][0]
+                    best_fit[k][0] = i
+                    best_fit[k][1] = similar[i][1]
+                    best_fit[k][2] = similar[i][2]
+                    best_fit[k][3] = similar[i][3]
+                    flag = True
+            flag = False
+
+
+        print("\n\n")
+        print("you could like:")
+        for i in best_fit:
+            if (i[0] != "-1"):
+                print(i[0])
+                cur.execute(sql_fil, (i[0],))
+                tmp = cur.fetchone()
+                if (tmp[1] != ""):
+                    print("Director: " + str(tmp[1]))
+                if (tmp[2] != ""):
+                    print("Actors:   ", end="")
+                    TMP = tmp[2].split("#$#")
+                    for j in TMP:
+                        print(str(j), end=";;  ")
+                print("D = " + str(i[1]) + "   A = " + str(i[2]) + "   T = " + str(i[3]))
+            print("\n")
+        print("\n\n")
+
+
+
+
+
+
+def main():
+    base = Upload('C:/book/movieDB.db')
+    base.create_tables()
+
+    do_or_not = input('if you want to upload to SQL print "yes":  ')
+    if(do_or_not == "yes"):
+        films_dict = {}
+        print("loading films list", end = "")
+        with open('C://Users/ENVY m6/Desktop/IT\Python/HW9_kino_poisk/ml-latest/films_dict.pkl', 'rb') as Input:
+            films_dict = pickle.load(Input)
+            Input.close()
+        print("\r", end = "")
+        base.fill_films_dict(films_dict)
+
+        directors_dict = {}
+        print("loading directors list", end = "")
+        with open('C://Users/ENVY m6/Desktop/IT\Python/HW9_kino_poisk/ml-latest/directors_dict.pkl', 'rb') as Input:
+            directors_dict = pickle.load(Input)
+            Input.close()
+        print("\r", end="")
+        base.fill_directors_dict(directors_dict)
+        directors_dict = {}
+
+        print("loading actors list", end = "")
+        with open('C://Users/ENVY m6/Desktop/IT\Python/HW9_kino_poisk/ml-latest/actors_dict.pkl', 'rb') as Input:
+            actors_dict = pickle.load(Input)
+            Input.close()
+        print("\r", end="")
+        base.fill_actors_dict(actors_dict)
+        actors_dict = {}
+
+        TAGS_dict = {}
+        print("loading tags list", end = "")
+        with open('C://Users/ENVY m6/Desktop/IT\Python/HW9_kino_poisk/ml-latest/tags_dict.pkl', 'rb') as Input:
+            TAGS_dict = pickle.load(Input)
+            Input.close()
+        print("\r", end="")
+        base.fill_tags_dict(TAGS_dict, films_dict)
+        TAGS_dict = {}
+
+    sql_fil = "SELECT * FROM film_dict WHERE name=(?)"
+    base1 = Comparer('C:/book/movieDB.db')
+    flag = False
+    print("To exit the app press 'Enter'")
+    while (not flag):
+        Name = input("Enter the name of the film: ")
+        if (Name == ""):
+            flag = True
+            continue
+        base1.find_similar(Name)
+
+
+if __name__ == "__main__": main()
